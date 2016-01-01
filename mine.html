@@ -1,0 +1,745 @@
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<title>Document</title>
+	<link rel="stylesheet" type="text/css" href="./public/css/mine.css">
+	<link rel="stylesheet" type="text/css" href="./public/js/Zebra_Dialog/css/flat/zebra_dialog.css">
+	<link rel="stylesheet" type="text/css" href="./public/js/validator/jquery.validator.css">
+	<script type="text/javascript" src="./public/js/jquery-1.8.3.min.js"></script>
+</head>
+
+<body>
+	<div id="main">
+		<div id="menu">
+			<div id="action">
+				<button type="button" id="restart" class="btn btn-primary">重新开始</button>
+				<button type="button" id="setting" class="btn btn-primary">设置</button>
+				<button type="button" id="pause" class="btn btn-primary">暂停</button>
+			</div>
+			<div>
+				<span>时间：</span>
+				<span id="second">0</span>
+			</div>
+			<div>
+				<span>剩余雷数：</span>
+				<span id="total">10</span>
+			</div>
+		</div>
+
+		<table id="mine_table">
+		</table>
+	</div>
+
+	<div class="segment" id="mine_param">
+		<form action="" class="mine_param_form">
+			<table class="mine_param_table">
+				<tr>
+					<td>行数(8~12)：</td>
+					<td><input type="text" name="row" value="" /></td>
+				</tr>
+				<tr>
+					<td>列数(8~20)：</td>
+					<td><input type="text" name="col" value="" /></td>
+				</tr>
+				<tr>
+					<td>雷数(10~100)：</td>
+					<td><input type="text" name="total" value="" /></td>
+				</tr>
+			</table>
+		</form>
+	</div>
+
+<script type="text/javascript" src="./public/js/mine.js"></script>
+<script type="text/javascript" src="./public/js/mineUI.js"></script>
+<script type="text/javascript" src="./public/js/Zebra_Dialog/zebra_dialog.js"></script>
+<script type="text/javascript" src="./public/js/validator/jquery.validator.js"></script>
+<script type="text/javascript" src="./public/js/validator/local/zh_CN.js"></script>
+<script type="text/javascript">
+$(function() {
+	// 禁用浏览器默认的右键菜单
+	document.oncontextmenu = function(event) {
+		return false;
+	}
+
+	$(document).mouseup(function(event) {
+		if(1 === event.which) {
+			mouse.left = 0;
+		} else if(3 === event.which) {
+			mouse.right = 0;
+		}
+	});
+
+
+	// 玩家标记的地雷数目
+	var flagTotal = 0;
+
+	// 玩家标记正确的地雷数目
+	var correctFlagTotal = 0;
+
+	var mine = {
+		// 雷图的行数
+		row : 8,
+
+		// 雷图的列数
+		col : 8,
+
+		// 雷的个数
+		total : 10,
+
+		// 雷图
+		map : null,
+	};
+
+
+	// 记录按下鼠标左右键
+	// 按下左键left为1
+	// 按下右键right为1
+	var mouse = {
+		left : 0,
+		right : 0
+	};
+
+
+	// 计时器需要的一些参数
+	// status 计时器是否开启
+	// second 表示秒数
+	// tmpSecond 用于保存暂停后的秒数
+	// handle 记录句柄
+	var timer = {
+		status : 'disable',
+		second : 0,
+		tmpSecond : 0,
+		handle : null
+	};
+
+
+	// 初始化定时器
+	function initTimer() {
+		timer.second = 0;
+		$('#second').text(timer.second);
+		$('#pause').text('暂停').hide();
+		timer.status = 'disable';
+		timer.tmpSecond = 0;
+		timer.handle = null;
+	}
+
+
+	// 开启计时器
+	function startTimer() {
+		if('disable' === timer.status) {
+			timer.status = 'enable';
+			timer.second = 0;
+
+			timer.handle = setInterval(timerHandleFunc, 1000);
+
+			$('#pause').show();
+		}
+	}
+
+
+	function timerHandleFunc() {
+		timer.second += 1;
+		$('#second').text(timer.second);
+	}
+
+
+	// 运行计时器
+	function runTimer() {
+		if('enable' === timer.status) {
+			return;
+		}
+
+		if('disable' === timer.status) {
+			startTimer();
+		} else if('pause' === timer.status) {
+			continueTimer();
+		}
+	}
+
+
+	// 暂停计时器
+	function pauseTimer() {
+		if('enable' === timer.status) {
+			$('#pause').text('继续');
+			timer.status = 'pause';
+			clearInterval(timer.handle);
+			timer.tmpSecond = timer.second;
+		}
+	}
+
+
+	// 继续运行计时器
+	function continueTimer() {
+		if('pause' === timer.status) {
+			$('#pause').text('暂停');
+			timer.status = 'enable';
+			clearInterval(timer.handle);
+			timer.second = timer.tmpSecond;
+			timer.handle = setInterval(timerHandleFunc, 1000);
+		}
+	}
+
+
+	// 停止计时器
+	function stopTimer() {
+		timer.status = 'disable';
+		clearInterval(timer.handle);
+	}
+
+
+
+	// 游戏开始
+	function gameStart() {
+		// 初始化定时器
+		initTimer();
+
+		// 初始化剩余雷数
+		$('#total').text(mine.total);
+		flagTotal = 0;
+		correctFlagTotal = 0;
+
+		// 创建地图
+		mine.map = createMineMap(mine.row, mine.col, mine.total);
+
+		// 显示地图
+		$('#mine_table').replaceWith(createMineHtml(mine.row, mine.col));
+
+
+		$('#mine_table').mouseleave(function(event) {
+		});
+
+
+		$('#mine_table td').mousedown(function(event) {
+			mouseDownHandle(this, event);
+		});
+
+
+		$('#mine_table td').mouseup(function(event) {
+			mouseUpHandle(this, event);
+
+			// 阻止事件冒泡
+			event.stopPropagation();
+		});
+
+
+		$('#mine_table td').mouseenter(function(event) {
+			mouseEnterHandle(this, event);
+		});
+
+
+		$('#mine_table td').mouseleave(function(event) {
+			mouseLeaveHandle(this, event);
+		});
+
+
+		// 暂停或者继续游戏
+		$('#pause').unbind('click').click(function(event) {
+			// alert($(this).text());
+			if('暂停' === $(this).text()) {
+				pauseTimer();
+			} else {
+				continueTimer();
+			}
+		});
+
+
+		// 重新开始游戏
+		$('#restart').unbind('click').click(function(event) {
+			// alert('重新开始');
+			gameRestart();
+		});
+
+
+		$('#setting').unbind('click').click(function(event) {
+			// 表单验证结果
+			var validResult = false;
+			var htmlSegment = $('#mine_param').clone().html();
+
+			new $.Zebra_Dialog(htmlSegment, {
+				"width" : 500,
+				"type" : "information",
+				"buttons" : [
+					{caption: '确定', callback: function() {
+						var form = $('.ZebraDialog .mine_param_form');
+
+						// 触发验证
+						form.trigger("validate");
+
+						// 验证失败
+						if(!validResult) {
+							return false;
+						}
+
+						row = parseInt(form.find('input[name="row"]').attr('value'));
+						col = parseInt(form.find('input[name="col"]').attr('value'));
+						total = parseInt(form.find('input[name="total"]').attr('value'));
+
+						// 雷数不能超过总方格数的一半
+						if(total > (row*col)/2) {
+							new $.Zebra_Dialog('雷数不能超过总方格数的一半', {
+								"type" : "error",
+								"buttons" : ['确定']
+							});
+
+							return false;
+						}
+
+						mine.row = row;
+						mine.col = col;
+						mine.total = total;
+
+						validResult = false;
+
+						gameRestart();
+					}},
+					{caption: '取消'}
+				]
+			});
+
+
+			// 表单验证
+			$('.ZebraDialog .mine_param_form').validator({
+				theme: "yellow_right",
+				timely: 2,
+				fields: {
+					row: {
+						rule: "required;integer;range[8~12]",
+						msg: {
+							required: "行数不能为空"
+						},
+						ok: ""
+					},
+					col: {
+						rule: "required;integer;range[8~20]",
+						msg: {
+							required: "列数不能为空"
+						},
+						ok: ""
+					},
+					total: {
+						rule: "required;integer;range[10~100]",
+						msg: {
+							required: "雷数不能为空"
+						},
+						ok: ""
+					}
+				},
+				invalid: function(form) {
+					validResult = false;
+				},
+				valid: function(form) {
+					validResult = true;
+				}
+			});
+		});
+	}
+
+
+	// 重新开始游戏
+	function gameRestart() {
+		gameFinal();
+		gameStart();
+	}
+
+
+	// 游戏结束后的一些收尾工作
+	function gameFinal() {
+		stopTimer();
+	}
+
+	// 玩家失败，游戏结束
+	function gameOver() {
+		gameFinal();
+
+		mouse.left = 0;
+		mouse.right = 0;
+
+
+		// if(confirm('你输了，重新开始？')) {
+		// 	gameStart();
+		// }
+
+		new $.Zebra_Dialog('你输了，重新开始？', {
+			"animation_speed_show" : 1000,
+			"animation_speed_hide" : 1000,
+			"type" : "error",
+			"buttons" : ['确定'],
+			"onClose" : function(caption) {
+				gameStart();
+			}
+		});
+	}
+
+
+	// 检查是否获胜
+	function checkWin() {
+		var spaceCount = $('td[data-status="space"]').length;
+		var numberCount = $('td[data-status="number"]').length;
+
+		if(spaceCount + numberCount === mine.row * mine.col - mine.total) {
+			gameFinal();
+
+			// if(confirm('你赢了，重新开始？')) {
+			// 	gameStart();
+			// }
+
+			new $.Zebra_Dialog('恭喜你，你赢了！', {
+				"animation_speed_show" : 1000,
+				"animation_speed_hide" : 1000,
+				"type" : "confirmation",
+				"buttons" : ['确定'],
+				"onClose" : function(caption) {
+					gameStart();
+				}
+			});
+		}
+	}
+
+
+	function leftClickBox(element) {
+		runTimer();
+
+		// 获取格子状态
+		status = $(element).attr('data-status');
+		// alert(status);
+
+
+		// 不是隐藏格子和问号格子，点击无效
+		if('hide' !== status && 'question' !== status) {
+			return;
+		}
+
+
+		var row = parseInt($(element).parent('tr').attr('data-row'));
+		var col = parseInt($(element).attr('data-col'));
+		var number = mine.map[row][col];
+
+		// alert('row: ' + row + '\ncol: '+ col + '\ncount: '+count);
+		// // // console.log(row, col, count);
+
+		// 点到雷输了
+		if(9 === number) {
+			$(element).attr('data-status', 'mine');
+			$(element).text('雷');
+			$(element).addClass('open');
+
+			gameOver();
+			return;
+		}
+
+		// 不是雷也不是空白区域
+		if(0 !== number) {
+			$(element).attr('data-status', 'number');
+			$(element).text(number);
+			$(element).addClass('open');
+
+			// 检查是否获胜
+			checkWin();
+			return;
+		}
+
+
+		// 点到空白区域了
+		if(0 === number) {
+			$(element).attr('data-status', 'space');
+			$(element).text('');
+			$(element).addClass('open');
+
+			// 检查是否获胜
+			checkWin();
+
+			// 获取周围的格子
+			var points = getAllAround(row, col, mine.row, mine.col);
+			// // // console.log(points);
+			var len = points.length;
+
+			// 点开周围的格子
+			for (var i = 0; i < len; i++) {
+				leftClickBox($('tr[data-row="'+points[i][0]+'"] td[data-col="'+points[i][1]+'"]')[0]);
+			};
+		}
+	}
+
+
+	function rightClickBox(element) {
+		runTimer();
+
+		// 获取格子状态
+		var status = $(element).attr('data-status');
+		// alert(status);
+
+		// 点开的格子，点击无效
+		if('space' === status || 'number' === status) {
+			return;
+		}
+
+
+		// 如果是隐藏状态，就改为标记状态
+		if('hide' === status) {
+			flagTotal += 1;
+			$('#total').text(mine.total - flagTotal);
+			$(element).attr('data-status', 'flag');
+			$(element).text('红旗');
+
+			var row = parseInt($(element).parent('tr').attr('data-row'));
+			var col = parseInt($(element).attr('data-col'));
+
+			// 标记正确
+			if(9 === mine.map[row][col]) {
+				correctFlagTotal += 1;
+			}
+
+			checkWin();
+			return;
+		}
+
+
+		// 如果是标记状态，就改为疑问状态
+		if('flag' === status) {
+			flagTotal -= 1;
+			$('#total').text(mine.total - flagTotal);
+			$(element).attr('data-status', 'question');
+			$(element).text('问号');
+
+			var row = parseInt($(element).parent('tr').attr('data-row'));
+			var col = parseInt($(element).attr('data-col'));
+
+			// 将正确的标记取消了
+			if(9 === mine.map[row][col]) {
+				correctFlagTotal -= 1;
+			}
+
+			checkWin();
+			return;
+		}
+
+
+		// 如果是疑问状态，就改为隐藏状态
+		if('question' === status) {
+			$(element).attr('data-status', 'hide');
+			$(element).text('');
+			return;
+		}
+	}
+
+
+	function leftRightClickBox(element) {
+		runTimer();
+
+		var status = $(element).attr('data-status');
+		// alert(status);
+
+
+		// 不是数字格子，点击无效
+		if('number' !== status) {
+			return;
+		}
+
+		var row = parseInt($(element).parent('tr').attr('data-row'));
+		var col = parseInt($(element).attr('data-col'));
+		var number = mine.map[row][col];
+
+		// 获取周围的格子
+		var points = getAllAround(row, col, mine.row, mine.col);
+		var len = points.length;
+
+		// 周围格子的标记数目
+		var flagCount = 0;
+		for (var i = 0; i < len; i++) {
+			var status = $('tr[data-row="'+points[i][0]+'"] td[data-col="'+points[i][1]+'"]').attr('data-status');
+			if('flag' === status) {
+				flagCount += 1;
+			}
+		};
+
+
+		// 如果标记数不等于雷数，点击无效
+		if(number !== flagCount) {
+			// alert('标记数：' + flagCount + '\n雷数：' + number);
+			return;
+		}
+
+
+		// 如果有雷就先点雷
+		for (var i = 0; i < len; i++) {
+			var otherStatus = $('tr[data-row="'+points[i][0]+'"] td[data-col="'+points[i][1]+'"]').attr('data-status');
+
+			// 输了
+			if( ('hide' === otherStatus || 'question' === otherStatus) && 9 === mine.map[points[i][0]][points[i][1]] ) {
+				leftClickBox($('tr[data-row="'+points[i][0]+'"] td[data-col="'+points[i][1]+'"]')[0]);
+				return;
+			}
+		};
+
+
+		// 周围没有雷，点开周围的格子
+		for (var i = 0; i < len; i++) {
+			leftClickBox($('tr[data-row="'+points[i][0]+'"] td[data-col="'+points[i][1]+'"]')[0]);
+		};
+	}
+
+
+	function mouseUpHandle(element, event) {
+		// 鼠标中键弹起
+		if(2 === event.which) {
+			return;
+		}
+
+		// 鼠标左键弹起
+		if(1 === event.which) {
+			if(1 === mouse.left && 1 === mouse.right) {
+				// // console.log('四周弹起');
+
+				protrudeBox(element);
+
+				// 四周凹陷的格子凸起
+				var row = parseInt($(element).parent('tr').attr('data-row'));
+				var col = parseInt($(element).attr('data-col'));
+				var points = getAllAround(row, col, mine.row, mine.col);
+				var len = points.length;
+
+				for (var i = 0; i < len; i++) {
+					protrudeBox($('tr[data-row="'+points[i][0]+'"] td[data-col="'+points[i][1]+'"]')[0]);
+				}
+
+				// 左右键事件
+				leftRightClickBox(element);
+
+				mouse.left = 0;
+				mouse.right = 0;
+				return;
+
+			} else if(1 === mouse.left && 0 === mouse.right) {
+				protrudeBox(element);
+
+				// 左键事件
+				leftClickBox(element);
+
+				mouse.left = 0;
+				// $('#log').append('左键弹起，L:'+mouse.left + ' R:'+mouse.right + '<br />');
+				return;
+			}
+		} else if(3 === event.which) {
+			// 鼠标右键弹起
+
+			if(1 === mouse.left && 1 === mouse.right) {
+				// alert('iee2');
+				// // console.log('四周弹起吗');
+				
+				protrudeBox(element);
+
+				// 四周凹陷的格子凸起
+				var row = parseInt($(element).parent('tr').attr('data-row'));
+				var col = parseInt($(element).attr('data-col'));
+				var points = getAllAround(row, col, mine.row, mine.col);
+				var len = points.length;
+
+				for (var i = 0; i < len; i++) {
+					protrudeBox($('tr[data-row="'+points[i][0]+'"] td[data-col="'+points[i][1]+'"]')[0]);
+				}
+
+				// 左右键事件
+				leftRightClickBox(element);
+
+				mouse.left = 0;
+				mouse.right = 0;
+				return;
+			}
+
+			mouse.right = 0;
+			// $('#log').append('右键弹起，L:'+mouse.left + ' R:'+mouse.right + '<br />');
+		}
+	}
+
+
+	function mouseDownHandle(element, event) {
+		// 鼠标中键被按下
+		if(2 === event.which) {
+			return;
+		}
+
+		// 鼠标左键被按下
+		if(1 === event.which) {
+			mouse.left = 1;
+
+			// $('#log').append('左键按下，L:'+mouse.left + ' R:'+mouse.right + '<br />');
+
+			// 左右键都被按下
+			if(1 === mouse.right) {
+				// // console.log('四周隐藏的都凹');
+
+				// 四周隐藏的格子都凹陷
+				var row = parseInt($(element).parent('tr').attr('data-row'));
+				var col = parseInt($(element).attr('data-col'));
+				var points = getAllAround(row, col, mine.row, mine.col);
+				var len = points.length;
+
+				for (var i = 0; i < len; i++) {
+					concaveBox($('tr[data-row="'+points[i][0]+'"] td[data-col="'+points[i][1]+'"]')[0]);
+				}
+			} else {
+				// 当前点击的格子凹陷
+				concaveBox(element);
+			}
+		} else if(3 === event.which) {
+			// 鼠标右键被按下
+
+			mouse.right = 1;
+
+			// $('#log').append('右键按下，L:'+mouse.left + ' R:'+mouse.right + '<br />');
+
+			// 左右键都被按下
+			if(1 === mouse.left) {
+				// // console.log('四周隐藏的都凹');
+
+				// 四周隐藏的格子都凹陷
+				var row = parseInt($(element).parent('tr').attr('data-row'));
+				var col = parseInt($(element).attr('data-col'));
+				var points = getAllAround(row, col, mine.row, mine.col);
+				var len = points.length;
+
+				for (var i = 0; i < len; i++) {
+					concaveBox($('tr[data-row="'+points[i][0]+'"] td[data-col="'+points[i][1]+'"]')[0]);
+				}
+			} else {
+				// 右键事件
+				rightClickBox(element);
+			}
+		} else {
+			// pass
+		}
+	}
+
+
+	function mouseEnterHandle(element, event) {
+		var status = $(element).attr('data-status');
+
+		if('space' === status || 'number' === status) {
+			return;
+		}
+
+		if(1 === mouse.left) {
+			$(element).removeClass('in');
+			$(element).addClass('concave')
+		} else {
+			$(element).addClass('in');
+		}
+	}
+
+
+	function mouseLeaveHandle(element, event) {
+		if(1 === mouse.left) {
+			$(element).removeClass('concave');
+		} else {
+			$(element).removeClass('in');
+		}
+	}
+
+	// 游戏开始
+	gameStart();
+
+});
+</script>
+</body>
+</html>
